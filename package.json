@@ -1,0 +1,9 @@
+{
+  "name": "iptv-api",
+  "version": "1.0.0",
+  "description": "IPTV API Proxy with Redis",
+  "main": "api/index.js",
+  "dependencies": {
+    "@upstash/redis": "^1.28.0"
+  }
+}
