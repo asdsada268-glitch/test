@@ -3,28 +3,25 @@ import re
 import os
 import requests
 
-# ดึงค่าเชื่อมต่อ Redis จาก GitHub Secrets
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 
-def update_redis(link):
+def update_redis(channel, link):
     if not UPSTASH_URL or not UPSTASH_TOKEN:
         print("❌ Redis credentials not found!")
         return
     
-    endpoint = f"{UPSTASH_URL}/set/amarin"
+    endpoint = f"{UPSTASH_URL}/set/{channel}"
     headers = {
         "Authorization": f"Bearer {UPSTASH_TOKEN}",
     }
-    
-    # ส่งลิงก์ตรงเข้า Upstash Redis
     res = requests.post(endpoint, headers=headers, data=link)
-    print(f"Redis Status: {res.status_code} - {res.text}")
+    print(f"Redis Status [{channel}]: {res.status_code}")
 
-def get_data():
+def scrape_channel(name, target_url, referer):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Referer": "https://www.amarintv.com/",
+        "Referer": referer,
     }
 
     scraper = cloudscraper.create_scraper(
@@ -32,29 +29,27 @@ def get_data():
     )
 
     try:
-        response = scraper.get("https://www.amarintv.com/live", headers=headers)
+        response = scraper.get(target_url, headers=headers)
 
         if response.status_code == 200:
             match = re.search(r'"(https[^"]+\.m3u8[^"]*)"', response.text)
             if match:
                 raw_url = match.group(1)
-
-                # ทำความสะอาดลิงก์
                 clean_raw = raw_url.rstrip('\\')
                 final_url = clean_raw.encode().decode('unicode_escape')
-                final_url = final_url.replace('\\', '')
-                final_url = final_url.strip()
+                final_url = final_url.replace('\\', '').strip()
 
-                # บันทึกลง Redis แทนการเขียนไฟล์
-                update_redis(final_url)
-                print(f"✅ Success! URL saved to Redis: {final_url}")
+                update_redis(name, final_url)
+                print(f"✅ Success! [{name}] URL saved: {final_url}")
             else:
-                print("❌ No M3U8 found.")
+                print(f"❌ No M3U8 found for {name}.")
         else:
-            print(f"❌ Status: {response.status_code}")
+            print(f"❌ Status [{name}]: {response.status_code}")
 
     except Exception as e:
-        print(f"⚠️ Error: {e}")
+        print(f"⚠️ Error [{name}]: {e}")
 
 if __name__ == "__main__":
-    get_data()
+    # ดึงข้อมูลทั้ง Amarin TV และ Thairath TV พร้อมกันทีเดียว
+    scrape_channel("amarin", "https://www.amarintv.com/live", "https://www.amarintv.com/")
+    scrape_channel("thairath", "https://www.thairath.co.th/tv/live", "https://www.thairath.co.th/")
