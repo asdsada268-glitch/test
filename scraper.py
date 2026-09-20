@@ -1,7 +1,6 @@
 import os
 import requests
 from playwright.sync_api import sync_playwright
-import time
 
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
@@ -35,6 +34,13 @@ def scrape_channel(playwright, name, target_url):
     )
     page = context.new_page()
     
+    # [NEW 1] Stealth Mode: ซ่อนสถานะว่าเราเป็น Bot (ปิด webdriver) เพื่อหลอกเว็บ Ch3 / TNN ให้โหลด Player
+    page.add_init_script("""
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => undefined
+        });
+    """)
+    
     found_url = None
 
     def handle_request(request):
@@ -46,32 +52,33 @@ def scrape_channel(playwright, name, target_url):
 
     try:
         print(f"🔍 Loading [{name}] -> {target_url}")
-        page.goto(target_url, timeout=40000, wait_until="domcontentloaded")
+        # เปลี่ยนกลับมาใช้ 'load' เพื่อให้สคริปต์ของ Player ภายนอก (เช่น Brightcove) โหลดเสร็จสมบูรณ์
+        page.goto(target_url, timeout=40000, wait_until="load")
         
         # เลื่อนหน้าจอลง เผื่อระบบ Lazy Load
-        page.mouse.wheel(0, 500)
-        page.wait_for_timeout(2000)
+        page.mouse.wheel(0, 400)
         
-        # [NEW] ยิง JavaScript บังคับให้ Video ทุกตัวในหน้าเว็บเล่นทันที
-        try:
-            page.evaluate("""
-                document.querySelectorAll('video').forEach(v => {
-                    v.muted = true;
-                    v.play().catch(e => console.log(e));
-                });
-            """)
-        except Exception:
-            pass
-        
-        # จำลองคลิกสำรอง โดยขยับจุดคลิกขึ้นมาด้านบน (Y=250) เพื่อหลบแบนเนอร์คุกกี้ด้านล่าง
-        page.mouse.click(640, 250)
-        page.wait_for_timeout(1000)
-        page.mouse.click(640, 250) # ย้ำอีกครั้ง
+        # [NEW 2] ทะลวง Iframe: สั่งให้ Video ทุกตัวในหน้าเว็บ รวมถึงที่ซ่อนอยู่ใน Iframe เริ่มเล่น (แก้ปัญหา One31, GMM25)
+        for frame in page.frames:
+            try:
+                frame.evaluate("""
+                    document.querySelectorAll('video').forEach(v => {
+                        v.muted = true;
+                        v.play().catch(e => console.log(e));
+                    });
+                """)
+            except:
+                pass
 
-        # Smart Wait: รอหาลิงก์สูงสุด 15 วินาที
-        for _ in range(15):
+        # [NEW 3] Aggressive Interaction: กดคลิกกลางจอและ Spacebar รัวๆ ทุก 1 วินาที เพื่อกระตุ้น Player
+        for i in range(15):
             if found_url:
                 break
+            try:
+                page.mouse.click(640, 360) # คลิกกลางจอทะลุแบนเนอร์
+                page.keyboard.press("Space") # กด Spacebar เผื่อ Player รอรับคำสั่งคีย์บอร์ด
+            except:
+                pass
             page.wait_for_timeout(1000)
 
     except Exception as e:
