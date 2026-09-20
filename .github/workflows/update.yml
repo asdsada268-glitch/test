@@ -5,6 +5,10 @@ on:
   schedule:
     - cron: '0 * * * *'  # รันอัตโนมัติทุกๆ 1 ชั่วโมง
 
+# เพิ่มสิทธิ์ตรงนี้เพื่อให้บอทสามารถ Commit และ Push ไฟล์ได้
+permissions:
+  contents: write
+
 jobs:
   update:
     runs-on: ubuntu-latest
