@@ -1,13 +1,19 @@
 export default async function handler(req, res) {
   const { channel } = req.query;
 
-  if (channel === 'amarin') {
+  // รายชื่อช่องทั้งหมดที่ระบบรองรับ
+  const supportedChannels = [
+    'amarin', 'thairath', 'true4u', 
+    'ch7', 'ch3', 'tv5', 
+    'thaich8', 'one31', 'gmm25', 'mcot', 'pptv', 'thaipbs', 'tpchannel', 'workpoint', 'nationtv', 'tnn'
+  ];
+
+  if (supportedChannels.includes(channel)) {
     try {
       const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
       const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-      // ดึงลิงก์จาก Redis
-      const response = await fetch(`${redisUrl}/get/amarin`, {
+      const response = await fetch(`${redisUrl}/get/${channel}`, {
         headers: {
           Authorization: `Bearer ${redisToken}`,
         },
