@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+import html
 
 # ดึงค่าเชื่อมต่อ Redis จาก GitHub Secrets
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
@@ -19,7 +20,7 @@ def update_redis(channel, link):
 
 
 def get_amarin_live_link():
-    """ฟังก์ชันดึงลิงก์สดของ Amarin TV แบบไดนามิกจากหน้าเว็บหลัก"""
+    """ฟังก์ชันดึงลิงก์สดของ Amarin TV และทำความสะอาด URL"""
     target_url = "https://www.amarintv.com/live"
     headers = {
         "User-Agent": (
@@ -35,15 +36,18 @@ def get_amarin_live_link():
         response = requests.get(target_url, headers=headers, timeout=15)
 
         if response.status_code == 200:
-            # ใช้ Regular Expression ค้นหาลิงก์ .m3u8 ที่มีพารามิเตอร์ token ของ ByteArk จากหน้าเว็บ
+            # ค้นหาลิงก์ .m3u8 จากหน้าเว็บ
             pattern = r'(https://[^\s\'"]+?\.m3u8\?[^\s\'"]*)'
             matches = re.findall(pattern, response.text)
 
             if matches:
-                # กรองเอาลิงก์สตรีมตัวแรกที่พบ
-                live_link = matches[0]
-                print(f"Found dynamic live link: {live_link}")
-                return live_link
+                raw_link = matches[0]
+                
+                # แปลงรหัส HTML และแทนที่ \u0026 ให้เป็น & ปกติ
+                clean_link = html.unescape(raw_link).replace(r"\u0026", "&")
+                
+                print(f"Cleaned live link: {clean_link}")
+                return clean_link
             else:
                 print("No m3u8 link found in HTML content.")
         else:
@@ -58,10 +62,10 @@ def get_amarin_live_link():
 if __name__ == "__main__":
     print("Starting Dynamic Scraper for Amarin TV...")
 
-    # 1. ดึงลิงก์สดแบบไดนามิกจากหน้าเว็บ
+    # 1. ดึงลิงก์สดและทำความสะอาดลิงก์
     stream_link = get_amarin_live_link()
 
-    # 2. บันทึกลง Redis ถ้าพบลิงก์ที่ถูกต้อง
+    # 2. บันทึกลง Redis
     if stream_link:
         update_redis("amarin", stream_link)
     else:
