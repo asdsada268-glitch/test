@@ -18,7 +18,6 @@ def update_redis(channel, link):
     print(f"Redis Status [{channel}]: {res.status_code}")
 
 def scrape_channel(playwright, name, target_url):
-    # เปิดเบราว์เซอร์จำลองแบบไร้หน้าจอ (Headless)
     browser = playwright.chromium.launch(
         headless=True,
         args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
@@ -31,7 +30,6 @@ def scrape_channel(playwright, name, target_url):
     
     found_url = None
 
-    # ดักจับ Network Request ทั้งหมดที่วิ่งผ่านหน้าเว็บเพื่อหาไฟล์ .m3u8
     def handle_request(request):
         nonlocal found_url
         if ".m3u8" in request.url and not found_url:
@@ -41,10 +39,10 @@ def scrape_channel(playwright, name, target_url):
 
     try:
         print(f"🔍 Loading [{name}] -> {target_url}")
-        # เข้าเว็บไซต์และรอให้โหลดสตรีมมิ่งเสร็จสิ้น
-        page.goto(target_url, timeout=40000, wait_until="networkidle")
-        # หน่วงเวลาเผื่อให้เครื่องเล่นวิดีโอ (Player) เริ่มเล่นและยิง Request สตรีม
-        page.wait_for_timeout(6000)
+        # เปลี่ยนเป็น domcontentloaded เพื่อป้องกันปัญหาติด Timeout จากทราฟฟิกเบื้องหลัง
+        page.goto(target_url, timeout=40000, wait_until="domcontentloaded")
+        # เพิ่มเวลารอให้ Player ของแต่ละเว็บเริ่มยิง Request สตรีม (ปรับเป็น 8 วินาที)
+        page.wait_for_timeout(8000)
     except Exception as e:
         print(f"⚠️ Error loading [{name}]: {e}")
 
