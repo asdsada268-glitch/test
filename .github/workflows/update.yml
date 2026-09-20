@@ -1,18 +1,30 @@
 name: Update IPTV Links
+
 on:
-  schedule:
-    - cron: '0 */3 * * *'
   workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'  # รันอัตโนมัติทุกๆ 1 ชั่วโมง
+
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      - run: pip install requests
-      - run: python scraper.py
-        env:
-          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
-          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+          
+      - name: Install dependencies
+        run: pip install cloudscraper requests
+        
+      - name: Run scraper
+        run: python scraper.py
+        
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add amarin.json
+          git commit -m "Update Amarin TV live link [skip ci]" || exit 0
+          git push
