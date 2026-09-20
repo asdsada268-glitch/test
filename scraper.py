@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 
 # ดึงค่าเชื่อมต่อ Redis จาก GitHub Secrets
@@ -7,60 +8,61 @@ UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
 
 
 def update_redis(channel, link):
-  """ฟังก์ชันส่งลิงก์สตรีมมิ่งไปเก็บไว้ในฐานข้อมูล Redis"""
-  endpoint = f"{UPSTASH_URL}/set/{channel}"
-  headers = {
-      "Authorization": f"Bearer {UPSTASH_TOKEN}",
-      "Content-Type": "application/json",
-  }
-  res = requests.post(endpoint, headers=headers, data=link)
-  print(f"[{channel}] Status: {res.status_code}")
+    """ฟังก์ชันส่งลิงก์สตรีมมิ่งไปเก็บไว้ในฐานข้อมูล Redis"""
+    endpoint = f"{UPSTASH_URL}/set/{channel}"
+    headers = {
+        "Authorization": f"Bearer {UPSTASH_TOKEN}",
+        "Content-Type": "application/json",
+    }
+    res = requests.post(endpoint, headers=headers, data=link)
+    print(f"[{channel}] Redis Status: {res.status_code}")
+
+
+def get_amarin_live_link():
+    """ฟังก์ชันดึงลิงก์สดของ Amarin TV แบบไดนามิกจากหน้าเว็บหลัก"""
+    target_url = "https://www.amarintv.com/live"
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://www.amarintv.com/",
+    }
+
+    try:
+        print(f"Fetching target web: {target_url}")
+        response = requests.get(target_url, headers=headers, timeout=15)
+
+        if response.status_code == 200:
+            # ใช้ Regular Expression ค้นหาลิงก์ .m3u8 ที่มีพารามิเตอร์ token ของ ByteArk จากหน้าเว็บ
+            pattern = r'(https://[^\s\'"]+?\.m3u8\?[^\s\'"]*)'
+            matches = re.findall(pattern, response.text)
+
+            if matches:
+                # กรองเอาลิงก์สตรีมตัวแรกที่พบ
+                live_link = matches[0]
+                print(f"Found dynamic live link: {live_link}")
+                return live_link
+            else:
+                print("No m3u8 link found in HTML content.")
+        else:
+            print(f"Failed to fetch website, status code: {response.status_code}")
+            
+    except Exception as e:
+        print(f"Error while scraping: {e}")
+
+    return None
 
 
 if __name__ == "__main__":
-  # 1. Headers ที่ได้จากการแปลง cURL ในภาพ[cite: 15]
-  headers = {
-      "accept": "*/*",
-      "accept-language": "th-TH,th;q=0.9",
-      "origin": "https://www.amarintv.com",
-      "priority": "u=1, i",
-      "referer": "https://www.amarintv.com/",
-      "sec-ch-ua": (
-          '"Chromium";v="152", "Not_A_Brand";v="24", "Google Chrome";v="152"'
-      ),
-      "sec-ch-ua-mobile": "?0",
-      "sec-ch-ua-platform": '"Windows"',
-      "sec-ch-ua-dest": "empty",
-      "sec-ch-ua-mode": "cors",
-      "sec-ch-ua-site": "cross-site",
-      "user-agent": (
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
-          " like Gecko) Chrome/152.0.0.0 Safari/537.36"
-      ),
-  }
+    print("Starting Dynamic Scraper for Amarin TV...")
 
-  # 2. พารามิเตอร์ Token ที่ได้จากการแปลง cURL ในภาพ[cite: 15]
-  params = {
-      "x_ark_access_id": "fleet-868",
-      "x_ark_auth_type": "ark-v2",
-      "x_ark_expires": "1789949144",
-      "x_ark_path_prefix": "/live/",
-      "x_ark_signature": "K3YmEqa1vJiHqJ1vsntGRQ",
-  }
+    # 1. ดึงลิงก์สดแบบไดนามิกจากหน้าเว็บ
+    stream_link = get_amarin_live_link()
 
-  # 3. ยิง Request ไปที่เซิร์ฟเวอร์ ByteArk[cite: 15]
-  response = requests.get(
-      "https://amarin-ks7jcc.cdn.byteark.com/live/1080p_index.m3u8",
-      params=params,
-      headers=headers,
-  )
-
-  # 4. ดึง URL เต็มๆ ที่รวม params ออกมาอัตโนมัติ
-  full_stream_link = response.url
-  print(f"Generated Link: {full_stream_link}")
-
-  # 5. บันทึกลง Redis เพื่อให้ Vercel API เรียกใช้งาน
-  if response.status_code == 200:
-    update_redis("amarin", full_stream_link)
-  else:
-    print("Failed to fetch stream link from source.")
+    # 2. บันทึกลง Redis ถ้าพบลิงก์ที่ถูกต้อง
+    if stream_link:
+        update_redis("amarin", stream_link)
+    else:
+        print("Could not retrieve a valid live stream link.")
