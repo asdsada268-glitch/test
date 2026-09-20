@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from playwright.sync_api import sync_playwright
 
@@ -34,11 +35,11 @@ def scrape_channel(playwright, name, target_url):
     )
     page = context.new_page()
     
-    # [NEW 1] Stealth Mode: ซ่อนสถานะว่าเราเป็น Bot (ปิด webdriver) เพื่อหลอกเว็บ Ch3 / TNN ให้โหลด Player
+    # [NEW] บล็อกการโหลดรูปภาพและฟอนต์ เพื่อให้เว็บโหลดเร็วขึ้น ป้องกันปัญหา Timeout
+    page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "font", "media"] else route.continue_())
+
     page.add_init_script("""
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => undefined
-        });
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     """)
     
     found_url = None
@@ -52,13 +53,10 @@ def scrape_channel(playwright, name, target_url):
 
     try:
         print(f"🔍 Loading [{name}] -> {target_url}")
-        # เปลี่ยนกลับมาใช้ 'load' เพื่อให้สคริปต์ของ Player ภายนอก (เช่น Brightcove) โหลดเสร็จสมบูรณ์
-        page.goto(target_url, timeout=40000, wait_until="load")
+        page.goto(target_url, timeout=45000, wait_until="domcontentloaded")
         
-        # เลื่อนหน้าจอลง เผื่อระบบ Lazy Load
-        page.mouse.wheel(0, 400)
+        page.mouse.wheel(0, 500)
         
-        # [NEW 2] ทะลวง Iframe: สั่งให้ Video ทุกตัวในหน้าเว็บ รวมถึงที่ซ่อนอยู่ใน Iframe เริ่มเล่น (แก้ปัญหา One31, GMM25)
         for frame in page.frames:
             try:
                 frame.evaluate("""
@@ -70,16 +68,25 @@ def scrape_channel(playwright, name, target_url):
             except:
                 pass
 
-        # [NEW 3] Aggressive Interaction: กดคลิกกลางจอและ Spacebar รัวๆ ทุก 1 วินาที เพื่อกระตุ้น Player
-        for i in range(15):
+        for _ in range(8):
             if found_url:
                 break
             try:
-                page.mouse.click(640, 360) # คลิกกลางจอทะลุแบนเนอร์
-                page.keyboard.press("Space") # กด Spacebar เผื่อ Player รอรับคำสั่งคีย์บอร์ด
+                page.mouse.click(640, 360)
+                page.keyboard.press("Space")
             except:
                 pass
             page.wait_for_timeout(1000)
+
+        # [NEW] ไม้ตายสุดท้าย: ถ้ายังดักหาใน Network ไม่เจอ ให้สแกนหาจากโค้ด HTML ทั้งหน้า
+        if not found_url:
+            html_content = page.content()
+            # ค้นหา Pattern ที่ลงท้ายด้วย .m3u8 ใน HTML/JavaScript
+            match = re.search(r'(https?:\/\/[^"\'<>\s]+\.m3u8[^"\'<>\s]*)', html_content)
+            if match:
+                raw_url = match.group(1).replace('\\/', '/') # เคลียร์อักขระแปลกปลอม
+                found_url = raw_url
+                print(f"🕵️ Found M3U8 hidden in HTML source for {name}!")
 
     except Exception as e:
         print(f"⚠️ Error loading [{name}]: {e}")
