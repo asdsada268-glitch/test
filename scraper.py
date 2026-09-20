@@ -1,6 +1,7 @@
 import os
 import requests
 from playwright.sync_api import sync_playwright
+import time
 
 UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
 UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
@@ -20,7 +21,13 @@ def update_redis(channel, link):
 def scrape_channel(playwright, name, target_url):
     browser = playwright.chromium.launch(
         headless=True,
-        args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+        args=[
+            "--no-sandbox", 
+            "--disable-setuid-sandbox", 
+            "--disable-dev-shm-usage",
+            "--autoplay-policy=no-user-gesture-required", # บังคับอนุญาตให้เล่นวิดีโออัตโนมัติ
+            "--mute-audio" # ปิดเสียงเบราว์เซอร์เพื่อลดการถูกบล็อก
+        ]
     )
     context = browser.new_context(
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -33,16 +40,28 @@ def scrape_channel(playwright, name, target_url):
     def handle_request(request):
         nonlocal found_url
         if ".m3u8" in request.url and not found_url:
+            # ดักจับลิงก์ m3u8 ตัวแรกที่ถูกยิงออกมา
             found_url = request.url
 
     page.on("request", handle_request)
 
     try:
         print(f"🔍 Loading [{name}] -> {target_url}")
-        # เปลี่ยนเป็น domcontentloaded เพื่อป้องกันปัญหาติด Timeout จากทราฟฟิกเบื้องหลัง
         page.goto(target_url, timeout=40000, wait_until="domcontentloaded")
-        # เพิ่มเวลารอให้ Player ของแต่ละเว็บเริ่มยิง Request สตรีม (ปรับเป็น 8 วินาที)
-        page.wait_for_timeout(8000)
+        
+        # เลื่อนหน้าจอลงมาเล็กน้อย เผื่อว่า Player ตั้งค่าเป็น Lazy Load ไว้
+        page.mouse.wheel(0, 500)
+        
+        # รอ 2 วินาทีให้โหลด UI เสร็จ แล้วจำลองการคลิกกลางหน้าจอ (พิกัด 640x360) เผื่อมีปุ่ม Play บังอยู่
+        page.wait_for_timeout(2000)
+        page.mouse.click(640, 360)
+
+        # Smart Wait: รอหาลิงก์สูงสุด 15 วินาที เช็คทุกๆ 1 วินาที ถ้าเจอแล้วให้ออกลูปทันทีไม่ต้องรอจนจบ
+        for _ in range(15):
+            if found_url:
+                break
+            page.wait_for_timeout(1000)
+
     except Exception as e:
         print(f"⚠️ Error loading [{name}]: {e}")
 
