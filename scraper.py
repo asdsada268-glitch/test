@@ -50,6 +50,20 @@ def scrape_channel(name, target_url, referer):
         print(f"⚠️ Error [{name}]: {e}")
 
 if __name__ == "__main__":
-    # ดึงข้อมูลทั้ง Amarin TV และ Thairath TV พร้อมกันทีเดียว
+    # ดึงข้อมูลทั้งหมดรวมถึง TNN แบบอัตโนมัติ
     scrape_channel("amarin", "https://www.amarintv.com/live", "https://www.amarintv.com/")
     scrape_channel("thairath", "https://www.thairath.co.th/tv/live", "https://www.thairath.co.th/")
+    scrape_channel("true4u", "https://true4u.com/live", "https://true4u.com/")
+    scrape_channel("ch7", "https://www.ch7.com/live", "https://www.ch7.com/")
+    scrape_channel("ch3", "https://ch3plus.com/live", "https://ch3plus.com/")
+    scrape_channel("tv5", "https://thaitv5hd.com/live/", "https://thaitv5hd.com/")
+    scrape_channel("thaich8", "https://www.thaich8.com/live", "https://www.thaich8.com/")
+    scrape_channel("one31", "https://oned.net/live-tv/one31", "https://oned.net/")
+    scrape_channel("gmm25", "https://oned.net/live-tv/gmm25", "https://oned.net/")
+    scrape_channel("mcot", "https://www.mcot.net/live", "https://www.mcot.net/")
+    scrape_channel("pptv", "https://www.pptvhd36.com/live", "https://www.pptvhd36.com/")
+    scrape_channel("thaipbs", "https://www.thaipbs.or.th/live", "https://www.thaipbs.or.th/")
+    scrape_channel("tpchannel", "https://www.tpchannel.org/broadcasts/tv", "https://www.tpchannel.org/")
+    scrape_channel("workpoint", "https://workpointtv.com/live-stream-page", "https://workpointtv.com/")
+    scrape_channel("nationtv", "https://www.nationtv.tv/live", "https://www.nationtv.tv/")
+    scrape_channel("tnn", "https://www.tnnthailand.com/live/", "https://www.tnnthailand.com/")
