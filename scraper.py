@@ -1,5 +1,25 @@
 import cloudscraper
 import re
+import os
+import requests
+
+# ดึงค่าเชื่อมต่อ Redis จาก GitHub Secrets
+UPSTASH_URL = os.environ.get("UPSTASH_REDIS_REST_URL")
+UPSTASH_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+
+def update_redis(link):
+    if not UPSTASH_URL or not UPSTASH_TOKEN:
+        print("❌ Redis credentials not found!")
+        return
+    
+    endpoint = f"{UPSTASH_URL}/set/amarin"
+    headers = {
+        "Authorization": f"Bearer {UPSTASH_TOKEN}",
+    }
+    
+    # ส่งลิงก์ตรงเข้า Upstash Redis
+    res = requests.post(endpoint, headers=headers, data=link)
+    print(f"Redis Status: {res.status_code} - {res.text}")
 
 def get_data():
     headers = {
@@ -19,30 +39,22 @@ def get_data():
             if match:
                 raw_url = match.group(1)
 
-                # 1. ลบเครื่องหมาย \ ที่ปิดท้ายออกก่อน (ถ้ามี)
+                # ทำความสะอาดลิงก์
                 clean_raw = raw_url.rstrip('\\')
-                
-                # 2. แปลง \\u0026 เป็น &
                 final_url = clean_raw.encode().decode('unicode_escape')
-                
-                # 3. กวาดล้าง \ ที่อาจหลงเหลือ
                 final_url = final_url.replace('\\', '')
-                
-                # 4. ตัดช่องว่างหัวท้าย
                 final_url = final_url.strip()
 
-                # เขียนลงไฟล์ amarin.json
-                with open("amarin.json", "w", encoding="utf-8") as f:
-                    f.write(final_url)
-
-                print(f"Success! URL saved: {final_url}")
+                # บันทึกลง Redis แทนการเขียนไฟล์
+                update_redis(final_url)
+                print(f"✅ Success! URL saved to Redis: {final_url}")
             else:
-                print("No M3U8 found.")
+                print("❌ No M3U8 found.")
         else:
-            print(f"Status: {response.status_code}")
+            print(f"❌ Status: {response.status_code}")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"⚠️ Error: {e}")
 
 if __name__ == "__main__":
     get_data()
