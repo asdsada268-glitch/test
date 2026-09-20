@@ -25,8 +25,8 @@ def scrape_channel(playwright, name, target_url):
             "--no-sandbox", 
             "--disable-setuid-sandbox", 
             "--disable-dev-shm-usage",
-            "--autoplay-policy=no-user-gesture-required", # บังคับอนุญาตให้เล่นวิดีโออัตโนมัติ
-            "--mute-audio" # ปิดเสียงเบราว์เซอร์เพื่อลดการถูกบล็อก
+            "--autoplay-policy=no-user-gesture-required",
+            "--mute-audio"
         ]
     )
     context = browser.new_context(
@@ -40,7 +40,6 @@ def scrape_channel(playwright, name, target_url):
     def handle_request(request):
         nonlocal found_url
         if ".m3u8" in request.url and not found_url:
-            # ดักจับลิงก์ m3u8 ตัวแรกที่ถูกยิงออกมา
             found_url = request.url
 
     page.on("request", handle_request)
@@ -49,14 +48,27 @@ def scrape_channel(playwright, name, target_url):
         print(f"🔍 Loading [{name}] -> {target_url}")
         page.goto(target_url, timeout=40000, wait_until="domcontentloaded")
         
-        # เลื่อนหน้าจอลงมาเล็กน้อย เผื่อว่า Player ตั้งค่าเป็น Lazy Load ไว้
+        # เลื่อนหน้าจอลง เผื่อระบบ Lazy Load
         page.mouse.wheel(0, 500)
-        
-        # รอ 2 วินาทีให้โหลด UI เสร็จ แล้วจำลองการคลิกกลางหน้าจอ (พิกัด 640x360) เผื่อมีปุ่ม Play บังอยู่
         page.wait_for_timeout(2000)
-        page.mouse.click(640, 360)
+        
+        # [NEW] ยิง JavaScript บังคับให้ Video ทุกตัวในหน้าเว็บเล่นทันที
+        try:
+            page.evaluate("""
+                document.querySelectorAll('video').forEach(v => {
+                    v.muted = true;
+                    v.play().catch(e => console.log(e));
+                });
+            """)
+        except Exception:
+            pass
+        
+        # จำลองคลิกสำรอง โดยขยับจุดคลิกขึ้นมาด้านบน (Y=250) เพื่อหลบแบนเนอร์คุกกี้ด้านล่าง
+        page.mouse.click(640, 250)
+        page.wait_for_timeout(1000)
+        page.mouse.click(640, 250) # ย้ำอีกครั้ง
 
-        # Smart Wait: รอหาลิงก์สูงสุด 15 วินาที เช็คทุกๆ 1 วินาที ถ้าเจอแล้วให้ออกลูปทันทีไม่ต้องรอจนจบ
+        # Smart Wait: รอหาลิงก์สูงสุด 15 วินาที
         for _ in range(15):
             if found_url:
                 break
