@@ -26,7 +26,8 @@ def scrape_channel(playwright, name, target_url):
             "--disable-setuid-sandbox", 
             "--disable-dev-shm-usage",
             "--autoplay-policy=no-user-gesture-required",
-            "--mute-audio"
+            "--mute-audio",
+            "--disable-web-security" # [NEW] ปิดระบบความปลอดภัยเพื่อเจาะทะลุ Iframe ข้ามโดเมน
         ]
     )
     context = browser.new_context(
@@ -35,8 +36,8 @@ def scrape_channel(playwright, name, target_url):
     )
     page = context.new_page()
     
-    # [NEW] บล็อกการโหลดรูปภาพและฟอนต์ เพื่อให้เว็บโหลดเร็วขึ้น ป้องกันปัญหา Timeout
-    page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "font", "media"] else route.continue_())
+    # [FIX] เอา "media" ออกจากการบล็อก เพื่อให้ช่อง 7 กลับมาดึงข้อมูลได้ปกติ
+    page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "font"] else route.continue_())
 
     page.add_init_script("""
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -44,12 +45,28 @@ def scrape_channel(playwright, name, target_url):
     
     found_url = None
 
-    def handle_request(request):
+    # [NEW] ระบบดักจับขั้นสุดยอด: คุ้ยหาลิงก์ m3u8 จากเนื้อหา API (JSON/Text) ที่เว็บโหลดมา
+    def handle_response(response):
         nonlocal found_url
-        if ".m3u8" in request.url and not found_url:
-            found_url = request.url
+        if found_url: return
+        
+        # 1. เช็คจาก URL ตรงๆ ก่อน
+        if ".m3u8" in response.url:
+            found_url = response.url
+            return
+            
+        # 2. เช็คเนื้อหาใน API Requests (พวก Fetch/XHR) ว่ามีลิงก์ซ่อนมาในรูปแบบ JSON ไหม
+        try:
+            if response.request.resource_type in ["fetch", "xhr"]:
+                text = response.text()
+                match = re.search(r'(https?:\/\/[^"\'<>\s]+\.m3u8[^"\'<>\s]*)', text)
+                if match:
+                    found_url = match.group(1).replace('\\/', '/')
+                    print(f"🕵️ Found M3U8 inside API JSON for {name}!")
+        except:
+            pass
 
-    page.on("request", handle_request)
+    page.on("response", handle_response)
 
     try:
         print(f"🔍 Loading [{name}] -> {target_url}")
@@ -78,14 +95,12 @@ def scrape_channel(playwright, name, target_url):
                 pass
             page.wait_for_timeout(1000)
 
-        # [NEW] ไม้ตายสุดท้าย: ถ้ายังดักหาใน Network ไม่เจอ ให้สแกนหาจากโค้ด HTML ทั้งหน้า
+        # Fallback สแกนโค้ด HTML (ที่ช่วยชีวิตช่อง NationTV ไว้)
         if not found_url:
             html_content = page.content()
-            # ค้นหา Pattern ที่ลงท้ายด้วย .m3u8 ใน HTML/JavaScript
             match = re.search(r'(https?:\/\/[^"\'<>\s]+\.m3u8[^"\'<>\s]*)', html_content)
             if match:
-                raw_url = match.group(1).replace('\\/', '/') # เคลียร์อักขระแปลกปลอม
-                found_url = raw_url
+                found_url = match.group(1).replace('\\/', '/')
                 print(f"🕵️ Found M3U8 hidden in HTML source for {name}!")
 
     except Exception as e:
